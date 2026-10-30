@@ -204,7 +204,7 @@ audio.addEventListener('timeupdate', () => {
   syncLyrics();
 });
 audio.addEventListener('loadedmetadata', () => {$('total-time').textContent = timeLabel(audio.duration);});
-audio.addEventListener('play', () => {$('play-btn').textContent = 'Ⅱ'; $('play-btn').setAttribute('aria-label','暂停'); $('disc').classList.add('spinning');});
+audio.addEventListener('play', () => {$('play-btn').innerHTML = '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1"></rect><rect x="14" y="4" width="5" height="16" rx="1"></rect></svg>'; $('play-btn').setAttribute('aria-label','暂停'); $('disc').classList.add('spinning');});
 audio.addEventListener('pause', () => {$('play-btn').textContent = '▶'; $('play-btn').setAttribute('aria-label','播放'); $('disc').classList.remove('spinning');});
 audio.addEventListener('ended', () => {if (repeatMode === 2) {audio.currentTime = 0; play();} else pickNext(1);});
 audio.addEventListener('error', () => {if (index !== -1 && audio.src) notify('播放失败：当前浏览器可能不支持该音频文件或 FLAC 编码');});
