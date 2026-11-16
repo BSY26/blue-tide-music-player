@@ -15,7 +15,7 @@
 
 2026.10.30 修复记录：播放歌曲时播放按钮曾错误显示罗马数字“Ⅱ”，已改为双竖条暂停图标，暂停后恢复播放图标，无障碍标签随状态切换。
 
-此日期版本号从 2026.10.30 起记录。仓库内原有的 `blue-tide-music-player.zip` 是旧快照，不包含上述更新；如需下载最新版，请在仓库首页选择 **Code → Download ZIP**。
+此日期版本号从 2026.10.30 起记录。仓库不再保留旧版整包快照，下载最新版请在仓库首页选择 **Code → Download ZIP**。
 
 ## 功能
 
@@ -76,13 +76,10 @@ blue-tide-music-player/
 ├── ambient.css            # 沉浸式背景、播放开关与玻璃面板样式
 ├── app.js                 # 播放列表、音频事件、LRC 解析、自动切歌与背景调色
 ├── favicon.svg            # 图标
-├── examples/example.lrc   # 原创示例歌词，无商业音频
 ├── README.md              # 项目介绍与快速入门
 ├── DEPLOY.md              # GitHub 仓库与 Pages 部署指南
 ├── PRIVACY.md             # 本地隐私说明
-├── LICENSE                # MIT 开源许可证
-├── .gitignore             # 忽略本地音频和临时文件
-└── .nojekyll              # Pages 跳过 Jekyll 处理
+└── LICENSE                # MIT 开源许可证
 ```
 
 ## 已知限制
