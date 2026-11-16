@@ -11,6 +11,11 @@ let shuffle = false;
 let currentLyrics = [];
 let activeLine = -1;
 let toastTimer = null;
+let autoNext = true;   // 自动切歌：一首播完自动播放下一首
+let ambientOn = true;  // 沉浸式电影质感背景
+let ambientLayerIndex = 0;
+let fadeFrame = 0;
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const audioExt = /\.(mp3|flac)$/i;
 const lrcExt = /\.lrc$/i;
@@ -24,6 +29,70 @@ function timeLabel(seconds) {
 function notify(message) {
   const el = $('toast'); el.textContent = message; el.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3400);
+}
+
+// —— 沉浸式电影质感背景 ——
+// 每首歌按标题稳定映射到一组电影调色板，切歌时背景色场以溶接方式过渡，形成“转场”感。
+const ambientPalettes = [
+  {name: '深海蓝', a1: '#1b6291', a2: '#06364f', a3: '#2f9aa8', glow: '#7fe7f2', glow2: '#1f7fa8'},
+  {name: '暮光橙', a1: '#8a4a3a', a2: '#3a1a2c', a3: '#b96f52', glow: '#ffb377', glow2: '#7a3f5c'},
+  {name: '极光青', a1: '#1f7a68', a2: '#0a3b38', a3: '#3fb59a', glow: '#8df0c8', glow2: '#1d6e63'},
+  {name: '暗夜酒红', a1: '#6d1f32', a2: '#2a0a18', a3: '#a3384a', glow: '#f07a90', glow2: '#5c1a2c'},
+  {name: '冷雾银蓝', a1: '#45607a', a2: '#16202c', a3: '#7d93a8', glow: '#d7e9f5', glow2: '#3d5468'},
+  {name: '夜樱紫', a1: '#5f356e', a2: '#2b1233', a3: '#9c65a8', glow: '#e8a8e0', glow2: '#4a2358'}
+];
+function hashText(text) {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) hash = (hash * 33 + text.charCodeAt(i)) % 99991;
+  return hash;
+}
+function applyAmbientPalette(title) {
+  const host = $('ambient'); if (!host) return;
+  const palette = ambientPalettes[hashText(title || '蓝潮') % ambientPalettes.length];
+  host.dataset.mood = palette.name;
+  host.style.setProperty('--glow', palette.glow);
+  host.style.setProperty('--glow2', palette.glow2);
+  document.documentElement.style.setProperty('--glow', palette.glow);
+  const layers = host.querySelectorAll('.ambient-layer');
+  if (!layers.length) return;
+  const next = layers[ambientLayerIndex ? 0 : 1];
+  const current = layers[ambientLayerIndex];
+  next.style.setProperty('--a1', palette.a1);
+  next.style.setProperty('--a2', palette.a2);
+  next.style.setProperty('--a3', palette.a3);
+  next.classList.add('on');
+  if (current) current.classList.remove('on');
+  ambientLayerIndex = ambientLayerIndex ? 0 : 1;
+}
+function syncAmbient(isPlaying) {
+  const el = $('ambient'); if (!el) return;
+  el.classList.toggle('is-off', !ambientOn);
+  el.classList.toggle('is-playing', ambientOn && Boolean(isPlaying));
+}
+// 切歌时音量淡入，让换曲更像电影转场
+function fadeInVolume() {
+  if (fadeFrame) cancelAnimationFrame(fadeFrame);
+  const target = Number($('volume').value) / 100;
+  if (reduceMotion()) { audio.volume = target; return; }
+  audio.volume = 0;
+  const start = performance.now();
+  const step = (now) => {
+    const p = Math.min(1, (now - start) / 900);
+    audio.volume = target * (1 - Math.pow(1 - p, 2));
+    fadeFrame = p < 1 ? requestAnimationFrame(step) : 0;
+  };
+  fadeFrame = requestAnimationFrame(step);
+}
+function savePrefs() {
+  try { localStorage.setItem('blue-tide-prefs', JSON.stringify({autoNext, ambientOn})); } catch (error) { /* file:// 打开时可能不可用 */ }
+}
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem('blue-tide-prefs'); if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.autoNext === 'boolean') autoNext = parsed.autoNext;
+    if (typeof parsed.ambientOn === 'boolean') ambientOn = parsed.ambientOn;
+  } catch (error) { /* 忽略损坏的本地配置 */ }
 }
 function renderTracks() {
   const list = $('track-list'); list.replaceChildren();
@@ -130,8 +199,9 @@ async function loadTrack(nextIndex, startPlaying = false) {
   $('seek').disabled = false;
   $('seek').value = '0'; $('current-time').textContent = '0:00'; $('total-time').textContent = '0:00';
   currentLyrics = []; activeLine = -1;
+  applyAmbientPalette(tracks[index].title);
   renderTracks(); await loadLyricsForTrack();
-  if (startPlaying) await play();
+  if (startPlaying) { fadeInVolume(); await play(); }
 }
 function togglePlay() { if (index === -1) return; if (audio.paused) play(); else audio.pause(); }
 function pickNext(direction) {
@@ -146,6 +216,22 @@ function pickNext(direction) {
     else { audio.pause(); audio.currentTime = 0; return; }
   }
   loadTrack(n, true);
+}
+// 一首播完后自动切到下一首（自动切歌）
+function autoAdvance() {
+  if (!tracks.length || index === -1) return;
+  let n;
+  if (shuffle && tracks.length > 1) {
+    n = index; while (n === index) n = Math.floor(Math.random() * tracks.length);
+  } else {
+    n = index + 1;
+    if (n >= tracks.length) {
+      if (repeatMode === 1) n = 0;
+      else { audio.currentTime = 0; syncAmbient(false); notify('歌单已播完，播放停止'); return; }
+    }
+  }
+  loadTrack(n, true);
+  notify(`自动切歌 · ${tracks[n].title}`);
 }
 async function importFiles(fileList) {
   const files = [...fileList];
@@ -170,6 +256,7 @@ function clearLibrary() {
   $('current-time').textContent = '0:00'; $('total-time').textContent = '0:00';
   $('seek').value = '0'; $('seek').disabled = true; $('play-btn').disabled = true;
   showLyricsPlaceholder('听见海潮，等待歌词。', '选择同名 .lrc 文件后将同步高亮。');
+  applyAmbientPalette(null); syncAmbient(false);
   renderTracks(); notify('播放列表已清空');
 }
 
@@ -183,6 +270,20 @@ $('lrc-button').addEventListener('click', () => $('lrc-input').click());
 $('lrc-input').addEventListener('change', e => {importFiles(e.target.files); e.target.value = '';});
 $('encoding').addEventListener('change', () => {if (index !== -1) loadLyricsForTrack();});
 $('clear-btn').addEventListener('click', clearLibrary);
+$('autonext-btn').addEventListener('click', () => {
+  autoNext = !autoNext;
+  $('autonext-btn').setAttribute('aria-pressed', String(autoNext));
+  $('autonext-btn').querySelector('.chip-state').textContent = autoNext ? '开' : '关';
+  savePrefs();
+  notify(autoNext ? '自动切歌已开启：一首播完自动切下一首' : '自动切歌已关闭：播完当前歌曲即停止');
+});
+$('ambient-btn').addEventListener('click', () => {
+  ambientOn = !ambientOn;
+  $('ambient-btn').setAttribute('aria-pressed', String(ambientOn));
+  $('ambient-btn').querySelector('.chip-state').textContent = ambientOn ? '开' : '关';
+  savePrefs(); syncAmbient(!audio.paused);
+  notify(ambientOn ? '沉浸背景已开启' : '沉浸背景已关闭');
+});
 $('play-btn').addEventListener('click', togglePlay);
 $('prev-btn').addEventListener('click', () => {if (audio.currentTime > 3) audio.currentTime = 0; else pickNext(-1);});
 $('next-btn').addEventListener('click', () => pickNext(1));
@@ -196,7 +297,11 @@ $('repeat-btn').addEventListener('click', () => {
   $('repeat-btn').textContent = repeatMode === 2 ? '↺¹' : '↻'; notify(`循环模式：${modes[repeatMode]}`);
 });
 $('seek').addEventListener('input', () => {if (Number.isFinite(audio.duration)) audio.currentTime = audio.duration * Number($('seek').value) / 1000;});
-$('volume').addEventListener('input', () => {audio.volume = Number($('volume').value) / 100; $('volume-label').textContent = `${$('volume').value}%`;});
+$('volume').addEventListener('input', () => {
+  if (fadeFrame) { cancelAnimationFrame(fadeFrame); fadeFrame = 0; }
+  audio.volume = Number($('volume').value) / 100;
+  $('volume-label').textContent = `${$('volume').value}%`;
+});
 audio.volume = .8;
 audio.addEventListener('timeupdate', () => {
   $('current-time').textContent = timeLabel(audio.currentTime);
@@ -204,9 +309,13 @@ audio.addEventListener('timeupdate', () => {
   syncLyrics();
 });
 audio.addEventListener('loadedmetadata', () => {$('total-time').textContent = timeLabel(audio.duration);});
-audio.addEventListener('play', () => {$('play-btn').innerHTML = '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1"></rect><rect x="14" y="4" width="5" height="16" rx="1"></rect></svg>'; $('play-btn').setAttribute('aria-label','暂停'); $('disc').classList.add('spinning');});
-audio.addEventListener('pause', () => {$('play-btn').textContent = '▶'; $('play-btn').setAttribute('aria-label','播放'); $('disc').classList.remove('spinning');});
-audio.addEventListener('ended', () => {if (repeatMode === 2) {audio.currentTime = 0; play();} else pickNext(1);});
+audio.addEventListener('play', () => {$('play-btn').innerHTML = '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1"></rect><rect x="14" y="4" width="5" height="16" rx="1"></rect></svg>'; $('play-btn').setAttribute('aria-label','暂停'); $('disc').classList.add('spinning'); syncAmbient(true);});
+audio.addEventListener('pause', () => {$('play-btn').textContent = '▶'; $('play-btn').setAttribute('aria-label','播放'); $('disc').classList.remove('spinning'); syncAmbient(false);});
+audio.addEventListener('ended', () => {
+  if (repeatMode === 2) {audio.currentTime = 0; play(); return;}
+  if (autoNext) autoAdvance();
+  else {audio.currentTime = 0; syncAmbient(false); notify('自动切歌已关闭，播放停止');}
+});
 audio.addEventListener('error', () => {if (index !== -1 && audio.src) notify('播放失败：当前浏览器可能不支持该音频文件或 FLAC 编码');});
 document.addEventListener('keydown', e => {
   const target = e.target;
@@ -216,4 +325,10 @@ document.addEventListener('keydown', e => {
   if (e.code === 'ArrowRight' && index !== -1 && Number.isFinite(audio.duration)) {e.preventDefault(); audio.currentTime = Math.min(audio.duration, audio.currentTime + 5);}
 });
 window.addEventListener('beforeunload', () => {for (const track of tracks) URL.revokeObjectURL(track.url);});
+loadPrefs();
+$('autonext-btn').setAttribute('aria-pressed', String(autoNext));
+$('autonext-btn').querySelector('.chip-state').textContent = autoNext ? '开' : '关';
+$('ambient-btn').setAttribute('aria-pressed', String(ambientOn));
+$('ambient-btn').querySelector('.chip-state').textContent = ambientOn ? '开' : '关';
+applyAmbientPalette(null); syncAmbient(false);
 renderTracks();
