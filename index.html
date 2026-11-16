@@ -8,9 +8,20 @@
   <title>蓝潮 · Blue Tide Music Player</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="ambient.css" />
   <script defer src="app.js"></script>
 </head>
 <body>
+  <div id="ambient" class="ambient" aria-hidden="true">
+    <div class="ambient-layer"></div>
+    <div class="ambient-layer"></div>
+    <div class="ambient-bloom"></div>
+    <div class="ambient-bloom b"></div>
+    <div class="ambient-sweep"></div>
+    <div class="ambient-scan"></div>
+    <div class="ambient-grain"></div>
+    <div class="ambient-vignette"></div>
+  </div>
   <div class="shell">
     <header class="topbar">
       <a class="brand" href="./" aria-label="蓝潮音乐播放器首页">
@@ -57,6 +68,10 @@
           <button id="play-btn" class="play-button" type="button" aria-label="播放" disabled>▶</button>
           <button id="next-btn" class="icon-button" type="button" title="下一首" aria-label="下一首">⏭</button>
           <button id="repeat-btn" class="icon-button secondary" type="button" title="循环模式：关闭" aria-label="循环模式：关闭" aria-pressed="false">↻</button>
+        </div>
+        <div class="play-options">
+          <button id="autonext-btn" class="chip" type="button" title="一首播完自动切到下一首" aria-label="自动切歌" aria-pressed="true">自动切歌<span class="chip-state">开</span></button>
+          <button id="ambient-btn" class="chip" type="button" title="播放时显示沉浸式电影质感渐变背景" aria-label="沉浸背景" aria-pressed="true">沉浸背景<span class="chip-state">开</span></button>
         </div>
         <div class="volume"><label for="volume">音量</label><input id="volume" type="range" min="0" max="100" value="80" /><span id="volume-label">80%</span></div>
         <div class="hint">空格键：播放/暂停 · ← / →：前后跳转 5 秒</div>
